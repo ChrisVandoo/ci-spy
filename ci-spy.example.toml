@@ -1,0 +1,31 @@
+# Copy to ci-spy.toml and adjust. Every key is optional; defaults are in internal/spy/config.go.
+# Secrets come from the environment, not this file: ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL,
+# optional GITHUB_TOKEN (defaults to `gh auth token`) and SLACK_BOT_TOKEN.
+
+repo = "metabase/metabase"
+branches = ["master", "release-x.*"]
+releaseBranchLimit = 3      # newest N release branches
+commitWindow = 25           # commits back from each head
+events = ["push"]
+
+[schedule]
+interval = "20m"            # how often `watch` checks
+timezone = "Local"          # or e.g. "America/Los_Angeles"
+days = ["mon", "tue", "wed", "thu", "fri"]
+start = "09:00"
+end = "18:00"
+
+[detection]
+minConsecutiveFailures = 2  # or one failure that also failed its re-run (watch only)
+flakyFlips = 4              # jobs this flaky elsewhere in the window need one more red commit
+ignoreJobs = []             # regexes against "Workflow / job name"
+
+[analysis]
+enabled = true
+model = "claude-sonnet-5-5"
+maxPerDay = 10              # watch only
+
+[notify]
+macos = true
+slack = true
+# ciConductorUrl = "https://ci-conductor.example"   # adds a link to the first red commit

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Keeps `ci-spy watch` running in the background (it sleeps outside working hours itself).
+  1. Replace /Users/YOU/Repos/ci-spy with this folder, and fill in the keys below.
+  2. cp launchd/com.ci-spy.watch.plist ~/Library/LaunchAgents/
+  3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ci-spy.watch.plist
+  Stop with: launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.ci-spy.watch.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ci-spy.watch</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/YOU/Repos/ci-spy/ci-spy</string><string>watch</string></array>
+  <key>WorkingDirectory</key><string>/Users/YOU/Repos/ci-spy</string>
+  <key>KeepAlive</key><true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>ANTHROPIC_API_KEY</key><string></string>
+    <key>SLACK_WEBHOOK_URL</key><string></string>
+  </dict>
+  <key>StandardOutPath</key><string>/Users/YOU/Repos/ci-spy/data/watch.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOU/Repos/ci-spy/data/watch.log</string>
+</dict>
+</plist>

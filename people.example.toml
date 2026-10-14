@@ -1,0 +1,8 @@
+# Copy to people.toml. GitHub login -> how to tag them.
+# slackId gives a real @-mention in Slack (<@U…>); slack is the plain handle.
+# Without an entry, SLACK_BOT_TOKEN (users:read.email) is used to look people up by commit email.
+
+[octocat]
+name = "Mona Lisa"
+slack = "mona"
+slackId = "U01234567"

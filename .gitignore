@@ -1,0 +1,6 @@
+/ci-spy
+data/
+reports/
+.env
+ci-spy.toml
+people.toml
