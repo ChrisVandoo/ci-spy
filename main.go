@@ -11,7 +11,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,6 +35,7 @@ analyze flags:
 
 common:
   --config    config file (default "ci-spy.toml")
+  --log-level minimum log level: debug, info, warn, error (default "info")
 
 environment: ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL, GITHUB_TOKEN (else ` + "`gh auth token`" + `), SLACK_BOT_TOKEN
 `
@@ -68,6 +68,7 @@ func run(args []string) int {
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	configPath := fs.String("config", "ci-spy.toml", "")
+	logLevel := fs.String("log-level", "info", "")
 	noAI := fs.Bool("no-ai", false, "")
 	once := fs.Bool("once", false, "")
 	force := fs.Bool("force", false, "")
@@ -85,13 +86,19 @@ func run(args []string) int {
 	}
 	pos := parse(fs, args)
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("command", cmd)
+	logger, err := newLogger(os.Stderr, *logLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	logger = logger.With("command", cmd)
 	logger.Info("starting ci-spy")
 	cfg, err := spy.LoadConfig(*configPath)
 	if err != nil {
 		logger.Error("loading config failed", "error", err)
 		return 1
 	}
+	logger.Debug("config loaded", "path", *configPath, "repo", cfg.Repo, "branches", cfg.Branches)
 	token := spy.ResolveToken()
 	if token == "" {
 		logger.Warn("no GitHub token (set GITHUB_TOKEN or run `gh auth login`); using anonymous rate limits")

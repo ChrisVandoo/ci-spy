@@ -51,6 +51,7 @@ func Pass(d Deps, now time.Time) (PassResult, error) {
 		}
 		snaps[branch] = snap
 		breakages := FindBreakages(snap, cfg.Detection)
+		d.Log.Debug("branch snapshot collected", "branch", branch, "commits", len(snap.Commits), "failing_jobs", len(breakages))
 		var keys []string
 		for _, b := range breakages {
 			keys = append(keys, b.Key)
@@ -130,6 +131,12 @@ func investigate(d Deps, inc *Incident, snap BranchSnapshot, others []BranchKeys
 	if err != nil {
 		d.Log.Warn("gathering evidence failed", "first_bad", short(inc.FirstBad), "error", err)
 		ev = nil
+	}
+	if ev != nil {
+		d.Log.Debug("evidence gathered", "suspect_commits", len(ev.Suspects), "job_logs", len(ev.Jobs), "suspects_truncated", ev.SuspectsTruncated)
+	}
+	if inc.Analysis != nil {
+		d.Log.Debug("reusing existing analysis", "first_bad", short(inc.FirstBad))
 	}
 	if inc.Analysis == nil && ev != nil {
 		day := cfg.Schedule.LocalDay(now)
