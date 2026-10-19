@@ -11,7 +11,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,6 +36,8 @@ analyze flags:
 
 common:
   --config    config file (default "ci-spy.toml")
+  --log-level minimum log level: debug, info, warn, error (default "info")
+  --log-file  append logs to this file instead of stderr; reports stay on stdout
 
 environment: ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL, GITHUB_TOKEN (else ` + "`gh auth token`" + `), SLACK_BOT_TOKEN
 `
@@ -56,14 +58,20 @@ func parse(fs *flag.FlagSet, args []string) []string {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	os.Exit(run(os.Args[1:]))
+}
+
+func run(args []string) (exitCode int) {
+	if len(args) < 1 {
 		fmt.Print(usage)
-		os.Exit(2)
+		return 2
 	}
-	cmd, args := os.Args[1], os.Args[2:]
+	cmd, args := args[0], args[1:]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	configPath := fs.String("config", "ci-spy.toml", "")
+	logLevel := fs.String("log-level", "info", "")
+	logFile := fs.String("log-file", "", "")
 	noAI := fs.Bool("no-ai", false, "")
 	once := fs.Bool("once", false, "")
 	force := fs.Bool("force", false, "")
@@ -74,25 +82,49 @@ func main() {
 	case "watch", "analyze":
 	case "-h", "--help", "help":
 		fmt.Print(usage)
-		return
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
-		os.Exit(2)
+		return 2
 	}
 	pos := parse(fs, args)
 
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+	level, err := parseLogLevel(*logLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	var logOutput io.Writer = os.Stderr
+	if *logFile != "" {
+		file, err := os.OpenFile(*logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open log file: %v\n", err)
+			return 1
+		}
+		defer func() {
+			if err := file.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "close log file: %v\n", err)
+				exitCode = 1
+			}
+		}()
+		logOutput = file
+	}
+	logger := newLogger(logOutput, level).With("command", cmd)
+	logger.Info("starting ci-spy")
 	cfg, err := spy.LoadConfig(*configPath)
 	if err != nil {
-		logger.Fatalf("config: %v", err)
+		logger.Error("loading config failed", "error", err)
+		return 1
 	}
+	logger.Debug("config loaded", "path", *configPath, "repo", cfg.Repo, "branches", cfg.Branches)
 	token := spy.ResolveToken()
 	if token == "" {
-		logger.Print("no GitHub token (set GITHUB_TOKEN or run `gh auth login`); using anonymous rate limits")
+		logger.Warn("no GitHub token (set GITHUB_TOKEN or run `gh auth login`); using anonymous rate limits")
 	}
 	state, err := spy.LoadState(cfg.DataDir + "/state.json")
 	if err != nil {
-		logger.Fatalf("state: %v", err)
+		logger.Error("loading state failed", "error", err)
+		return 1
 	}
 	d := spy.Deps{GH: spy.NewGitHub(token), State: state, Config: cfg, Out: os.Stdout, Log: logger, DryRun: *dryRun}
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" && !*noAI {
@@ -104,19 +136,23 @@ func main() {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		if err := spy.Watch(ctx, d, *once, *force); err != nil {
-			logger.Fatal(err)
+			logger.Error("command failed", "error", err)
+			return 1
 		}
 	case "analyze":
 		if len(pos) != 1 {
 			fmt.Fprint(os.Stderr, usage)
-			os.Exit(2)
+			return 2
 		}
 		reports, err := spy.AnalyzeCommit(d, pos[0], *branch, time.Now())
 		if err != nil {
-			logger.Fatal(err)
+			logger.Error("command failed", "error", err)
+			return 1
 		}
 		for _, r := range reports {
 			fmt.Println(r.Text())
 		}
 	}
+	logger.Info("command completed")
+	return 0
 }

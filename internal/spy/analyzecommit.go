@@ -28,6 +28,7 @@ func AnalyzeCommit(d Deps, ref, branch string, now time.Time) ([]Report, error) 
 	if err != nil {
 		return nil, err
 	}
+	d.Log.Info("collecting CI status", "repo", cfg.Repo, "commit", sha, "branch", branch)
 	snap, err := CollectBranch(d.GH, d.State, cfg, sha, branch, now)
 	if err != nil {
 		return nil, err
@@ -39,6 +40,7 @@ func AnalyzeCommit(d Deps, ref, branch string, now time.Time) ([]Report, error) 
 	detection := cfg.Detection
 	detection.MinConsecutiveFailures = 1
 	groups := GroupBreakages(snap, FindBreakages(snap, detection))
+	d.Log.Info("CI status collected", "commits", len(snap.Commits), "failure_groups", len(groups))
 
 	var reports []Report
 	for _, g := range groups {
@@ -66,5 +68,9 @@ func AnalyzeCommit(d Deps, ref, branch string, now time.Time) ([]Report, error) 
 		msg := fmt.Sprintf("No failing jobs at %s (%s).%s", short(head.SHA), firstLine(head.Message), pendingNote)
 		reports = append(reports, Report{Title: short(head.SHA) + " on " + branch + ": nothing failing", Note: msg, Short: msg})
 	}
-	return reports, d.State.Save()
+	if err := d.State.Save(); err != nil {
+		return reports, err
+	}
+	d.Log.Info("commit analysis completed", "commit", short(head.SHA), "reports", len(reports), "requests", d.GH.Requests)
+	return reports, nil
 }
