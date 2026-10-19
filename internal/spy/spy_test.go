@@ -3,7 +3,7 @@ package spy
 import (
 	"bytes"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -101,7 +101,7 @@ func testConfig(t *testing.T) Config {
 }
 
 func deps(t *testing.T, gh *GitHub, st *State, an *Analyzer, out io.Writer) Deps {
-	return Deps{GH: gh, State: st, Config: testConfig(t), Analyzer: an, Out: out, Log: log.New(io.Discard, "", 0)}
+	return Deps{GH: gh, State: st, Config: testConfig(t), Analyzer: an, Out: out, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 }
 
 func TestWatchRedTrainOneIncidentOneAnalysisThenRecovery(t *testing.T) {

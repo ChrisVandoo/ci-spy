@@ -11,7 +11,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -56,11 +56,15 @@ func parse(fs *flag.FlagSet, args []string) []string {
 }
 
 func main() {
-	if len(os.Args) < 2 {
+	os.Exit(run(os.Args[1:]))
+}
+
+func run(args []string) int {
+	if len(args) < 1 {
 		fmt.Print(usage)
-		os.Exit(2)
+		return 2
 	}
-	cmd, args := os.Args[1], os.Args[2:]
+	cmd, args := args[0], args[1:]
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	configPath := fs.String("config", "ci-spy.toml", "")
@@ -74,25 +78,28 @@ func main() {
 	case "watch", "analyze":
 	case "-h", "--help", "help":
 		fmt.Print(usage)
-		return
+		return 0
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", cmd, usage)
-		os.Exit(2)
+		return 2
 	}
 	pos := parse(fs, args)
 
-	logger := log.New(os.Stderr, "", log.LstdFlags)
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("command", cmd)
+	logger.Info("starting ci-spy")
 	cfg, err := spy.LoadConfig(*configPath)
 	if err != nil {
-		logger.Fatalf("config: %v", err)
+		logger.Error("loading config failed", "error", err)
+		return 1
 	}
 	token := spy.ResolveToken()
 	if token == "" {
-		logger.Print("no GitHub token (set GITHUB_TOKEN or run `gh auth login`); using anonymous rate limits")
+		logger.Warn("no GitHub token (set GITHUB_TOKEN or run `gh auth login`); using anonymous rate limits")
 	}
 	state, err := spy.LoadState(cfg.DataDir + "/state.json")
 	if err != nil {
-		logger.Fatalf("state: %v", err)
+		logger.Error("loading state failed", "error", err)
+		return 1
 	}
 	d := spy.Deps{GH: spy.NewGitHub(token), State: state, Config: cfg, Out: os.Stdout, Log: logger, DryRun: *dryRun}
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" && !*noAI {
@@ -104,19 +111,23 @@ func main() {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		if err := spy.Watch(ctx, d, *once, *force); err != nil {
-			logger.Fatal(err)
+			logger.Error("command failed", "error", err)
+			return 1
 		}
 	case "analyze":
 		if len(pos) != 1 {
 			fmt.Fprint(os.Stderr, usage)
-			os.Exit(2)
+			return 2
 		}
 		reports, err := spy.AnalyzeCommit(d, pos[0], *branch, time.Now())
 		if err != nil {
-			logger.Fatal(err)
+			logger.Error("command failed", "error", err)
+			return 1
 		}
 		for _, r := range reports {
 			fmt.Println(r.Text())
 		}
 	}
+	logger.Info("command completed")
+	return 0
 }
