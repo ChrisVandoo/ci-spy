@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"io"
 	"strings"
 	"testing"
 )
@@ -21,10 +20,11 @@ func TestLogLevelFiltersMessages(t *testing.T) {
 	} {
 		t.Run(tc.level, func(t *testing.T) {
 			var out bytes.Buffer
-			logger, err := newLogger(&out, tc.level)
+			level, err := parseLogLevel(tc.level)
 			if err != nil {
 				t.Fatal(err)
 			}
+			logger := newLogger(&out, level)
 			logger.Debug("debug detail")
 			logger.Info("progress")
 			logger.Warn("warning")
@@ -45,7 +45,7 @@ func TestLogLevelFiltersMessages(t *testing.T) {
 
 func TestInvalidLogLevel(t *testing.T) {
 	for _, level := range []string{"", "trace", "info+2", "off"} {
-		if _, err := newLogger(io.Discard, level); err == nil || !strings.Contains(err.Error(), "invalid --log-level") {
+		if _, err := parseLogLevel(level); err == nil || !strings.Contains(err.Error(), "invalid --log-level") {
 			t.Errorf("level %q: expected a clear error, got %v", level, err)
 		}
 	}

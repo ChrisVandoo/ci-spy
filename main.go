@@ -11,6 +11,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -36,6 +37,7 @@ analyze flags:
 common:
   --config    config file (default "ci-spy.toml")
   --log-level minimum log level: debug, info, warn, error (default "info")
+  --log-file  append logs to this file instead of stderr; reports stay on stdout
 
 environment: ANTHROPIC_API_KEY, SLACK_WEBHOOK_URL, GITHUB_TOKEN (else ` + "`gh auth token`" + `), SLACK_BOT_TOKEN
 `
@@ -59,7 +61,7 @@ func main() {
 	os.Exit(run(os.Args[1:]))
 }
 
-func run(args []string) int {
+func run(args []string) (exitCode int) {
 	if len(args) < 1 {
 		fmt.Print(usage)
 		return 2
@@ -69,6 +71,7 @@ func run(args []string) int {
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	configPath := fs.String("config", "ci-spy.toml", "")
 	logLevel := fs.String("log-level", "info", "")
+	logFile := fs.String("log-file", "", "")
 	noAI := fs.Bool("no-ai", false, "")
 	once := fs.Bool("once", false, "")
 	force := fs.Bool("force", false, "")
@@ -86,12 +89,27 @@ func run(args []string) int {
 	}
 	pos := parse(fs, args)
 
-	logger, err := newLogger(os.Stderr, *logLevel)
+	level, err := parseLogLevel(*logLevel)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	logger = logger.With("command", cmd)
+	var logOutput io.Writer = os.Stderr
+	if *logFile != "" {
+		file, err := os.OpenFile(*logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open log file: %v\n", err)
+			return 1
+		}
+		defer func() {
+			if err := file.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "close log file: %v\n", err)
+				exitCode = 1
+			}
+		}()
+		logOutput = file
+	}
+	logger := newLogger(logOutput, level).With("command", cmd)
 	logger.Info("starting ci-spy")
 	cfg, err := spy.LoadConfig(*configPath)
 	if err != nil {

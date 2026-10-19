@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func newLogger(out io.Writer, level string) (*slog.Logger, error) {
+func parseLogLevel(level string) (slog.Level, error) {
 	var minimum slog.Level
 	switch strings.ToLower(level) {
 	case "debug":
@@ -19,7 +19,11 @@ func newLogger(out io.Writer, level string) (*slog.Logger, error) {
 	case "error":
 		minimum = slog.LevelError
 	default:
-		return nil, fmt.Errorf("invalid --log-level %q: choose debug, info, warn, or error", level)
+		return 0, fmt.Errorf("invalid --log-level %q: choose debug, info, warn, or error", level)
 	}
-	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: minimum})), nil
+	return minimum, nil
+}
+
+func newLogger(out io.Writer, level slog.Level) *slog.Logger {
+	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: level}))
 }
